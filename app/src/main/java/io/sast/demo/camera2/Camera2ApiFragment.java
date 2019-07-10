@@ -19,7 +19,6 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -36,7 +35,6 @@ import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Toast;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -57,7 +55,12 @@ public class Camera2ApiFragment extends Fragment {
     CaptureRequest captureRequest;
     CameraCharacteristics cameraCharacteristics;
 
-    int count = 0;
+    Size smallest;
+    private Size mPreviewSize;
+    ImageReader imageReader;
+    int[] requestCapabilities;
+
+    int frameCount = 0;
     long previousTimestamp = 0l;
 
     ImageReader.OnImageAvailableListener onImageAvailableListener = new ImageReader.OnImageAvailableListener() {
@@ -66,15 +69,10 @@ public class Camera2ApiFragment extends Fragment {
             Image image = reader.acquireNextImage();
             if (previousTimestamp == 0 || previousTimestamp + 1000 < System.currentTimeMillis()) {
                 previousTimestamp = System.currentTimeMillis();
-                Log.d("acquired Image", "" + count);
-                count = 0;
-                try {
-                    logParameters();
-                } catch (CameraAccessException e) {
-                    e.printStackTrace();
-                }
+                Log.d("FPS", "" + frameCount);
+                frameCount = 0;
             }
-            count++;
+            frameCount++;
             image.close();
         }
     };
@@ -138,11 +136,11 @@ public class Camera2ApiFragment extends Fragment {
     };
 
     private void createCameraPreviewSession() {
-        SurfaceTexture texturesurface = texture.getSurfaceTexture();
+        SurfaceTexture textureSurface = texture.getSurfaceTexture();
 
-        texturesurface.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+        textureSurface.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
         try {
-            Surface surface = new Surface(texturesurface);
+            Surface surface = new Surface(textureSurface);
             Surface imageSurface = imageReader.getSurface();
 
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
@@ -160,15 +158,6 @@ public class Camera2ApiFragment extends Fragment {
                         captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
                         captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(35, 35));
                         captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
-
-                        Range<Integer> range2 = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
-                        int max1 = range2.getUpper();
-                        int min1 = range2.getLower();
-
-                        Log.d("min and max", "   " + min1 + "   " + max1);
-                        int iso = ((100 * (max1 - min1)) / 100 + min1);
-                        captureRequestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
-
                         captureRequest = captureRequestBuilder.build();
 
                         cameraCaptureSession.setRepeatingRequest(captureRequest, captureCallback, threadHandler);
@@ -210,10 +199,6 @@ public class Camera2ApiFragment extends Fragment {
         }
     }
 
-    Size smallest;
-    private Size mPreviewSize;
-    ImageReader imageReader;
-
     private void setCameraOutputAndCharacterstics(int width, int height) {
         Activity activity = getActivity();
         CameraManager manager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
@@ -221,7 +206,6 @@ public class Camera2ApiFragment extends Fragment {
             for (String cameraId : manager.getCameraIdList()) {
                 CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
                 Integer lensFacing = characteristics.get(CameraCharacteristics.LENS_FACING);
-
                 Range<Long> frame = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
                 Log.d("frame", "" + frame);
 
@@ -234,6 +218,11 @@ public class Camera2ApiFragment extends Fragment {
                     continue;
                 }
                 cameraCharacteristics = characteristics;
+
+                /*
+                 Checking the motion tracking feature
+                 */
+                requestCapabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
                 smallest = Collections.min(Arrays.asList(configurationMap.getOutputSizes(ImageFormat.JPEG)), new CompareSizeByArea());
                 imageReader = ImageReader.newInstance(smallest.getWidth(), smallest.getHeight(), ImageFormat.JPEG, 2);
                 imageReader.setOnImageAvailableListener(onImageAvailableListener, threadHandler);
@@ -348,15 +337,6 @@ public class Camera2ApiFragment extends Fragment {
         if (null != imageReader) {
             imageReader.close();
             imageReader = null;
-        }
-    }
-
-
-    public void logParameters() throws CameraAccessException {
-        CameraManager cameraManager = (CameraManager) getActivity().getSystemService(Context.CAMERA_SERVICE);
-        CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraId);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Log.d("intrinsic", "" + characteristics.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION));
         }
     }
 }
